@@ -1,0 +1,188 @@
+{
+  "name": "CI/CD Failure Debugger (Local Test)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "test-webhook",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "test_webhook",
+      "name": "Test Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{ json: { \n  failedJob: { name: 'build', conclusion: 'failure' },\n  logs: 'npm ERR! Missing script: \"build:production\"\\nnpm ERR! \\nnpm ERR! To see a list of scripts, run:\\nnpm ERR!   npm run\\nnpm ERR! \\nnpm ERR! A complete log of this run can be found in:\\nnpm ERR!   /root/.npm/_logs/...'\n} }];\n"
+      },
+      "id": "mock_data",
+      "name": "Mock Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const logs = $input.item.json.logs;\nconst prompt = `Analyze the following CI/CD failure logs and provide:\\n- Root cause\\n- Failed step\\n- Why it failed\\n- Suggested fix\\n- Confidence level (high/medium/low)\\n\\nLogs:\\n${logs}`;\nreturn [{ json: { prompt, logs } }];\n"
+      },
+      "id": "prepare_gemini_prompt",
+      "name": "Prepare Gemini Prompt",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={{ $env.GEMINI_API_KEY }}",
+        "bodyContentType": "json",
+        "bodyParameters": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "{{ $json.prompt }}"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "retryOnFail": true,
+          "maxRetries": 3
+        }
+      },
+      "id": "call_gemini",
+      "name": "Call Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const response = $input.item.json.candidates[0].content.parts[0].text;\nconst analysis = response.split('\\n').reduce((acc, line) => {\n  if (line.includes('Root cause')) acc.rootCause = line.split(':')[1]?.trim() || 'Unknown';\n  if (line.includes('Failed step')) acc.failedStep = line.split(':')[1]?.trim() || 'Unknown';\n  if (line.includes('Why it failed')) acc.whyFailed = line.split(':')[1]?.trim() || 'Unknown';\n  if (line.includes('Suggested fix')) acc.suggestedFix = line.split(':')[1]?.trim() || 'Unknown';\n  if (line.includes('Confidence level')) acc.confidence = line.split(':')[1]?.trim() || 'Unknown';\n  return acc;\n}, {});\nreturn [{ json: analysis }];\n"
+      },
+      "id": "parse_gemini_response",
+      "name": "Parse Gemini Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/your-username/cicd-debugger/issues",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "Authorization",
+          "value": "Bearer {{ $env.GITHUB_TOKEN }}"
+        },
+        "bodyContentType": "json",
+        "bodyParameters": {
+          "title": "CI/CD Pipeline Failed: {{ $json.failedStep }}",
+          "body": "## Root Cause\\n{{ $json.rootCause }}\\n\\n## Failed Step\\n{{ $json.failedStep }}\\n\\n## Why it Failed\\n{{ $json.whyFailed }}\\n\\n## Suggested Fix\\n{{ $json.suggestedFix }}\\n\\n## Confidence Level\\n{{ $json.confidence }}",
+          "labels": ["bug", "ci-cd-failure"]
+        },
+        "options": {
+          "retryOnFail": true,
+          "maxRetries": 2
+        }
+      },
+      "id": "create_issue",
+      "name": "Create Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "Issue created successfully"
+            }
+          ]
+        }
+      },
+      "id": "success_response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "test_webhook": {
+      "main": [
+        [
+          {
+            "node": "mock_data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mock_data": {
+      "main": [
+        [
+          {
+            "node": "prepare_gemini_prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare_gemini_prompt": {
+      "main": [
+        [
+          {
+            "node": "call_gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call_gemini": {
+      "main": [
+        [
+          {
+            "node": "parse_gemini_response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "parse_gemini_response": {
+      "main": [
+        [
+          {
+            "node": "create_issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_issue": {
+      "main": [
+        [
+          {
+            "node": "success_response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null
+}

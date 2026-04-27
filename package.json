@@ -1,0 +1,21 @@
+{
+  "name": "cicd-debugger",
+  "version": "1.0.0",
+  "description": "AI-powered CI/CD Failure Debugger",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@types/node": "^18.0.0",
+    "axios": "^1.4.0",
+    "typescript": "^5.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "ts-node": "^10.0.0"
+  }
+}

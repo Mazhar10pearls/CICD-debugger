@@ -1,0 +1,240 @@
+{
+  "name": "CI/CD Failure Debugger",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-webhook",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "GitHub Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "github_token",
+              "value": "={{ $env.GITHUB_TOKEN }}"
+            }
+          ]
+        }
+      },
+      "id": "set_credentials",
+      "name": "Set Credentials",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/repos/{{ $json.body.repository.owner.login }}/{{ $json.body.repository.name }}/actions/runs/{{ $json.body.workflow_run.id }}/jobs",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "Authorization",
+          "value": "Bearer {{ $node[\"Set Credentials\"].json.github_token }}"
+        },
+        "options": {}
+      },
+      "id": "fetch_jobs",
+      "name": "Fetch Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const jobs = $input.item.json.jobs;\nconst failedJob = jobs.find(job => job.conclusion === 'failure');\nif (!failedJob) {\n  return [];\n}\nreturn [{ json: { failedJob, logsUrl: failedJob.html_url.replace('/jobs/', '/runs/').replace('/job/', '/run/') + '/logs' } }];\n"
+      },
+      "id": "find_failed_job",
+      "name": "Find Failed Job",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "{{ $json.logsUrl }}",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "Authorization",
+          "value": "Bearer {{ $node[\"Set Credentials\"].json.github_token }}"
+        },
+        "options": {
+          "fullResponse": true
+        }
+      },
+      "id": "fetch_logs",
+      "name": "Fetch Logs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const logs = $input.item.json.body;\nconst prompt = `Analyze the following CI/CD failure logs and provide:\n- Root cause\n- Failed step\n- Why it failed\n- Suggested fix\n- Confidence level (high/medium/low)\n\nLogs:\n${logs}`;\nreturn [{ json: { prompt, logs } }];\n"
+      },
+      "id": "prepare_gemini_prompt",
+      "name": "Prepare Gemini Prompt",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={{ $env.GEMINI_API_KEY }}",
+        "bodyContentType": "json",
+        "bodyParameters": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "{{ $json.prompt }}"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "call_gemini",
+      "name": "Call Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const response = $input.item.json.candidates[0].content.parts[0].text;\nconst analysis = response.split('\\n').reduce((acc, line) => {\n  if (line.startsWith('- Root cause:')) acc.rootCause = line.replace('- Root cause:', '').trim();\n  if (line.startsWith('- Failed step:')) acc.failedStep = line.replace('- Failed step:', '').trim();\n  if (line.startsWith('- Why it failed:')) acc.whyFailed = line.replace('- Why it failed:', '').trim();\n  if (line.startsWith('- Suggested fix:')) acc.suggestedFix = line.replace('- Suggested fix:', '').trim();\n  if (line.startsWith('- Confidence level:')) acc.confidence = line.replace('- Confidence level:', '').trim();\n  return acc;\n}, {});\nreturn [{ json: analysis }];\n"
+      },
+      "id": "parse_gemini_response",
+      "name": "Parse Gemini Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/{{ $json.body.repository.owner.login }}/{{ $json.body.repository.name }}/issues",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "Authorization",
+          "value": "Bearer {{ $node[\"Set Credentials\"].json.github_token }}"
+        },
+        "bodyContentType": "json",
+        "bodyParameters": {
+          "title": "CI/CD Pipeline Failed: {{ $json.failedStep }}",
+          "body": "## Root Cause\n{{ $json.rootCause }}\n\n## Failed Step\n{{ $json.failedStep }}\n\n## Why it Failed\n{{ $json.whyFailed }}\n\n## Suggested Fix\n{{ $json.suggestedFix }}\n\n## Confidence Level\n{{ $json.confidence }}",
+          "labels": ["bug", "ci-cd-failure"]
+        },
+        "options": {}
+      },
+      "id": "create_issue",
+      "name": "Create Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "webhook": {
+      "main": [
+        [
+          {
+            "node": "set_credentials",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set_credentials": {
+      "main": [
+        [
+          {
+            "node": "fetch_jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fetch_jobs": {
+      "main": [
+        [
+          {
+            "node": "find_failed_job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "find_failed_job": {
+      "main": [
+        [
+          {
+            "node": "fetch_logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fetch_logs": {
+      "main": [
+        [
+          {
+            "node": "prepare_gemini_prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare_gemini_prompt": {
+      "main": [
+        [
+          {
+            "node": "call_gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call_gemini": {
+      "main": [
+        [
+          {
+            "node": "parse_gemini_response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "parse_gemini_response": {
+      "main": [
+        [
+          {
+            "node": "create_issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null
+}
