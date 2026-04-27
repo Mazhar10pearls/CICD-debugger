@@ -43,14 +43,14 @@ An AI-powered system that automatically analyzes CI/CD pipeline failures and cre
 
 ### Environment Variables
 
-Create a `.env` file in the n8n directory (or set in n8n UI):
+Create a `.env` file in the **project root directory** (same location as `docker-compose.yml`):
 
 ```
 GITHUB_TOKEN=your_github_personal_access_token_here
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-**Security Note**: Never commit these keys to your repository. Add `.env` to `.gitignore`.
+**Security Note**: Never commit these keys to your repository. The `.env` file is already added to `.gitignore`.
 
 ### Steps
 
@@ -83,8 +83,8 @@ GEMINI_API_KEY=your_gemini_api_key_here
    - For production: Import `n8n-workflow.json` (real GitHub integration)
 
 4. **Set environment variables in n8n**
-   - Go to Settings > Environment Variables
-   - Add GITHUB_TOKEN and GEMINI_API_KEY
+   - Edit the `.env` file in the project root and add your actual API keys
+   - Or set them directly in the n8n UI at Settings > Environment Variables
 
 5. **Test the webhook**
    ```bash
