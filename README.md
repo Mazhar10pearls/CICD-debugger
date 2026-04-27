@@ -2,12 +2,35 @@
 
 An AI-powered system that automatically analyzes CI/CD pipeline failures and creates GitHub issues with root cause analysis.
 
+**Repository**: https://github.com/Mazhar10pearls/CICD-debugger
+
 ## Architecture
 
 - **GitHub Actions**: Detects pipeline failures
 - **n8n**: Workflow automation platform
 - **Gemini API**: AI analysis of failure logs
 - **GitHub API**: Creates issues with analysis
+
+## Prerequisites
+
+### GitHub Personal Access Token
+
+1. Go to [GitHub Settings > Developer settings > Personal access tokens > Tokens (classic)](https://github.com/settings/tokens)
+2. Click "Generate new token (classic)"
+3. Give it a name like "CICD-Debugger"
+4. Select scopes:
+   - `repo` (Full control of private repositories)
+   - `workflow` (Update GitHub Action workflows)
+5. Click "Generate token"
+6. **Copy the token immediately** - you won't see it again!
+
+### Google Gemini API Key
+
+1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Sign in with your Google account
+3. Click "Create API key"
+4. Give it a name like "CICD-Debugger"
+5. **Copy the API key**
 
 ## Local Testing Setup
 
@@ -23,9 +46,11 @@ An AI-powered system that automatically analyzes CI/CD pipeline failures and cre
 Create a `.env` file in the n8n directory (or set in n8n UI):
 
 ```
-GITHUB_TOKEN=your_github_token
-GEMINI_API_KEY=your_gemini_api_key
+GITHUB_TOKEN=your_github_personal_access_token_here
+GEMINI_API_KEY=your_gemini_api_key_here
 ```
+
+**Security Note**: Never commit these keys to your repository. Add `.env` to `.gitignore`.
 
 ### Steps
 
